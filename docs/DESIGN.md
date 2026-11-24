@@ -17,7 +17,7 @@ Three project ideas were compared before the design was settled.
 **Why the ops helpdesk assistant was chosen:**
 
 - Rules and RAG complement each other. Rules give predictable, auditable and cheap routing before the LLM is involved, and the LLM is limited to drafting replies from retrieved runbooks.
-- The knowledge base consists of about 15 short, self-written runbooks on common problems such as a full disk, a slow Postgres query or a failing nginx configuration. No proprietary or customer data is involved.
+- The knowledge base consists of 10 short, self-written runbooks on common problems such as a full disk, a slow Postgres query or a failing nginx configuration. No proprietary or customer data is involved.
 - The project covers the whole path from ingestion to a deployed, monitored service: embeddings and vector search, an API, a web UI, CI/CD and infrastructure as code.
 
 ## Architecture
