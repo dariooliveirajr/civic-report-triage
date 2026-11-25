@@ -1,65 +1,78 @@
-# Ops helpdesk assistant: design overview
+# Civic report triage: design overview
 
 ## Overview
 
-The project is a helpdesk assistant for IT operations. A small rules engine sorts incoming questions (later, tickets) by category, priority and queue, and a retrieval-augmented generation (RAG) component drafts replies from a library of markdown runbooks. Every reply lists the runbook passages it is based on, so the answer can be checked against its source.
+The project is a triage service for citizen reports to German cities. Köln and Bonn publish the reports they receive (illegal dumping, broken street lights, abandoned vehicles, blocked drains) as anonymised open data through the Open311 GeoReport v2 standard. The service imports these reports, a rules engine assigns each one a department, a priority and a target response time, and a retrieval-augmented generation (RAG) component drafts a reply from the city's own public service pages. Every draft lists the passages it is based on, so it can be checked against its source. Drafts are suggestions for a human; nothing is sent to citizens or to the cities.
 
-## Options considered
+**Why civic report triage was chosen:**
 
-Three project ideas were compared before the design was settled.
+- The incoming items are real, in German, and change every day, so routing and drafting are tested on data nobody wrote for the project.
+- Rules and RAG complement each other. Rules give predictable, auditable and cheap routing before the LLM is involved, and the LLM is limited to drafting replies from retrieved city pages.
+- The data is open and anonymised (Köln: Datenlizenz Deutschland – Zero 2.0; Bonn: CC0 1.0). No personal or proprietary data is involved.
+- The upstream APIs are not always available. Isolating the service from them is part of the design rather than an afterthought.
 
-| Option | What it is | Technical focus | Main risk |
-| --- | --- | --- | --- |
-| Ops helpdesk assistant (chosen) | Rules route and prioritise tickets, RAG drafts replies from runbooks | Rules engine, Node/TypeScript API, Postgres, Docker, embeddings, vector search, LLM calls, answer evaluation | Scope creep in the rules part |
-| Ask-the-docs assistant | RAG chat over one open-source documentation set | API, React, Postgres, the same RAG components | A very common use case, so it is less distinctive |
-| Natural-language dashboard | Plain-language questions become SQL and charts on an open dataset | Dashboards, SQL, indexing, LLM-generated SQL with read-only guardrails | SQL safety takes time to get right |
+## Related work
 
-**Why the ops helpdesk assistant was chosen:**
-
-- Rules and RAG complement each other. Rules give predictable, auditable and cheap routing before the LLM is involved, and the LLM is limited to drafting replies from retrieved runbooks.
-- The knowledge base consists of 10 short, self-written runbooks on common problems such as a full disk, a slow Postgres query or a failing nginx configuration. No proprietary or customer data is involved.
-- The project covers the whole path from ingestion to a deployed, monitored service: embeddings and vector search, an API, a web UI, CI/CD and infrastructure as code.
+Automatic classification of 311 requests has been studied and built before, mostly on US data: machine-learning classifiers that predict the responsible department (for example on Calgary open data), LLM-based categorisation of request text and images ([smart-311](https://github.com/hersh-gupta/smart-311)), and commercial and municipal deployments. For Köln, the R package [r311](https://github.com/ropengov/r311) provides access to the same Open311 data. This project differs in scope rather than in the classification idea: deterministic rules before the LLM, reply drafts grounded in cited city sources, German-language data, and a deployed, monitored service rather than a notebook or a model.
 
 ## Architecture
 
-The system consists of a web app, an API, a reply drafter and Postgres with pgvector, all running as Docker containers on AWS and deployed by CI/CD. A rules engine sits between the API and the reply drafter, and an ingest component loads the runbooks into the database. An external LLM API provides embeddings and reply drafts.
+The system consists of a web app, an API, a reply drafter and Postgres with pgvector, all running as Docker containers on AWS and deployed by CI/CD. A rules engine sits between the stored reports and the reply drafter. Two ingestion paths fill the database: report import from the cities' Open311 APIs, and knowledge ingest from the public pages listed in `knowledge/sources.yaml`. An external LLM API provides embeddings and reply drafts.
 
 Solid boxes are part of the first release. Dashed boxes are stubbed or scripted in the first release and completed in later releases.
 
 ```mermaid
 flowchart TB
+  cities["City Open311 APIs<br/>Köln, Bonn"]
+  pages["City service pages<br/>listed in sources.yaml"]
   llm["LLM API<br/>external service"]
   subgraph aws["Docker containers on AWS, deployed by CI/CD"]
     direction TB
-    subgraph req["Request path"]
+    subgraph req["Request path (reads only from Postgres)"]
       direction LR
-      web["Agent web app<br/>question box, shows sources"] --> api["API<br/>Node, TypeScript"] --> rules["Rules engine<br/>pass-through at first,<br/>rules added later"] --> drafter["Reply drafter<br/>search runbooks,<br/>ask the LLM"]
+      web["Web app<br/>report list, draft with sources"] --> api["API<br/>Node, TypeScript"] --> rules["Rules engine<br/>pass-through at first,<br/>rules added later"] --> drafter["Reply drafter<br/>search city pages,<br/>ask the LLM"]
     end
-    subgraph store["Data and ingestion"]
+    subgraph ingest["Ingestion (scheduled, independent of requests)"]
       direction LR
-      runbooks["Runbooks<br/>markdown files"] --> worker["Ingest worker<br/>script at first,<br/>worker later"] --> db[("Postgres + pgvector<br/>runbook chunks now,<br/>tickets and rules later")]
+      importer["Report import<br/>script at first,<br/>scheduled worker later"]
+      kb["Knowledge ingest<br/>fetch, chunk, embed"]
     end
-    req -->|"vector search, reads rules"| store
+    db[("Postgres + pgvector<br/>reports, knowledge chunks,<br/>rules later")]
+    req -->|"reads reports, vector search"| db
+    importer --> db
+    kb --> db
   end
-  aws -->|"embeddings and reply drafts"| llm
+  cities -->|"small date windows, retries"| importer
+  pages --> kb
+  drafter -->|"reply drafts"| llm
+  kb -->|"embeddings"| llm
   style rules stroke-dasharray: 4 4
-  style worker stroke-dasharray: 4 4
+  style importer stroke-dasharray: 4 4
 ```
 
 ### Components
 
-- **Agent web app.** A React page with a question box that shows each answer together with its sources.
-- **API.** A Node/TypeScript service that acts as the single entry point for the web app.
-- **Rules engine.** Applies JSON rules for category, priority, SLA and queue to an incoming ticket before a reply is drafted. In the first release it passes requests through unchanged.
-- **Reply drafter.** Searches the runbook chunks by vector similarity and asks the LLM for a reply, with the retrieved passages as the only source material. User input and retrieved text are treated as untrusted data.
-- **Ingest.** Splits the runbooks into chunks, creates embeddings through the LLM API and stores them in Postgres. It starts as a script and later becomes a background worker fed by a queue.
-- **Postgres + pgvector.** Holds the runbook chunks with their embeddings. Tickets and rules are added to the same database later.
-- **Runbooks.** Markdown files with front matter (title, category, keywords, last reviewed) and sections for symptoms, quick checks, fix, verification and escalation. The commands in the runbooks are examples and are not tested against every environment.
+- **Web app.** A React page that lists imported reports with their category, district and status, and shows a reply draft with its sources for a selected report. It shows the time of the last successful import ("data as of").
+- **API.** A Node/TypeScript service that acts as the single entry point for the web app. It reads only from Postgres and never calls a city API during a request.
+- **Report import.** One adapter per city behind a common Open311 interface. It queries `requests.json` in small date windows (one day to one week), pages through the results, applies timeouts and retries with backoff, and upserts reports by city and `service_request_id`, so repeated runs are safe. Each report keeps its source, licence and fetch time. It starts as a script and later becomes a scheduled worker.
+- **Rules engine.** Applies JSON rules to a report: Open311 category to department, priority (for example higher for safety-related categories), target response time, and flags such as possible duplicates nearby. In the first release it passes reports through unchanged.
+- **Reply drafter.** Searches the knowledge chunks by vector similarity, filtered by city and category, and asks the LLM for a reply with the retrieved passages as the only source material. Report text and retrieved pages are treated as untrusted data.
+- **Knowledge ingest.** Fetches the pages listed in `knowledge/sources.yaml`, extracts the main text, splits it into chunks, creates embeddings through the LLM API and stores them with the source URL and fetch time. A page that cannot be fetched keeps its last stored version.
+- **Postgres + pgvector.** Holds reports, knowledge chunks with embeddings, and later rules and import run logs.
 - **LLM API.** An external service used for both embeddings and reply drafts.
 
-### Request flow
+### Data flow
 
-A question (later a ticket) enters through the web app and reaches the API. The rules step classifies it, and the reply drafter searches the runbook chunks in Postgres, passes the best matches to the LLM and returns a reply with its sources. The ingest component works independently of requests and keeps the stored chunks in sync with the runbook files.
+Ingestion and requests are separate. On a schedule (in the first release, by hand), the report import fetches new and updated reports from the city APIs and stores them in Postgres, and the knowledge ingest keeps the stored chunks in sync with the listed pages. When a user opens a report, the API reads it from Postgres, the rules step classifies it, and the reply drafter searches the knowledge chunks, passes the best matches to the LLM and returns a draft with its sources.
+
+If a city API is unavailable, the import run fails, is logged and is retried on the next run. The web app keeps working with the last stored snapshot and shows its age.
+
+### Known constraints of the upstream APIs
+
+- The Köln endpoint times out on large date ranges and occasionally returns a proxy error from its backend. Small windows and retries avoid most failures.
+- Results are paginated (50 requests per page in Köln).
+- Field contents differ between cities, for example in category names and address formats. Each adapter maps its city's fields to a common report schema.
+- Reports appear in the API only after the city has published them, so the newest reports may be missing for a while.
 
 ### Technology
 
@@ -67,13 +80,14 @@ React, Node/TypeScript, Postgres with pgvector, Docker Compose for local develop
 
 ## Repository layout
 
-The repository is a monorepo with one directory per deployable app and top-level directories for content, schema and infrastructure.
+The repository is a monorepo with one directory per deployable app and top-level directories for knowledge sources, schema and infrastructure.
 
 ```text
-ops-helpdesk-assistant/
-├─ apps/api/            Node/TypeScript API: rules engine, reply drafter and ingest code
-├─ apps/web/            React agent web app
-├─ runbooks/            Markdown runbooks (the knowledge base)
+cologne-civic-report-triage/
+├─ apps/api/            Node/TypeScript API: rules engine, reply drafter, import and ingest code
+├─ apps/web/            React web app
+├─ knowledge/           sources.yaml: the public pages the drafter may use
+├─ data/                Local caches of API snapshots and fetched pages (not committed)
 ├─ db/migrations/       Postgres + pgvector schema migrations
 ├─ docs/                DESIGN.md, DEMO.md
 ├─ infra/               Deploy notes now, Terraform later
@@ -86,20 +100,21 @@ ops-helpdesk-assistant/
 
 | Component | Location | Notes |
 | --- | --- | --- |
-| Agent web app | `apps/web/` | Separate container; talks only to the API. |
+| Web app | `apps/web/` | Separate container; talks only to the API. |
 | API | `apps/api/` | Single entry point for the web app. |
-| Rules engine | `apps/api/` (module) | Runs in-process between the API and the reply drafter, so it is a module, not an app. Its JSON rules live with the code until they move into Postgres. |
+| Rules engine | `apps/api/` (module) | Runs in-process between the stored report and the reply drafter. Its JSON rules live with the code until they move into Postgres. |
 | Reply drafter | `apps/api/` (module) | Runs in-process; shares the database and LLM clients with ingest. |
-| Ingest | `apps/api/` (separate entry point) | A script run against the API's code (for example `npm run ingest`), reusing the same chunking, embedding and database code as the drafter. |
-| Postgres + pgvector | `db/migrations/`, `docker-compose.yml` | Migrations are kept outside the apps because the schema is shared by the API and ingest. |
-| Runbooks | `runbooks/` | Content, not code; kept at the top level so it can be edited and reviewed without touching the apps. Ingest reads it from a mounted path. |
+| Report import | `apps/api/` (separate entry point) | A script such as `npm run import-reports -- --city koeln --from 2026-11-01 --to 2026-11-08`; never runs during a request. |
+| Knowledge ingest | `apps/api/` (separate entry point) | A script such as `npm run ingest-knowledge`, reusing the chunking, embedding and database code of the drafter. |
+| Postgres + pgvector | `db/migrations/`, `docker-compose.yml` | Migrations are kept outside the apps because the schema is shared by the API and both ingestion paths. |
+| Knowledge sources | `knowledge/` | Content, not code; can be reviewed without touching the apps. |
 | Deployment | `infra/`, `.github/workflows/` | Docker containers on AWS, deployed by CI/CD. |
 
-### Why ingest lives in `apps/api` for now
+### Why import and ingest live in `apps/api` for now
 
-In the first release, ingest is a script. It needs the same embedding client, chunk schema and database access as the reply drafter, so keeping it in `apps/api` avoids a shared package and a second build. It still runs as its own entry point and never during a request, which matches the design: ingest works independently of the request path.
+In the first release, both ingestion paths are scripts. They need the same database access and, for knowledge ingest, the same embedding client and chunk schema as the reply drafter, so keeping them in `apps/api` avoids a shared package and a second build. They still run as their own entry points and never during a request.
 
-When ingest becomes a queue-fed background worker, it can run in either of two ways:
+When import becomes a scheduled worker, it can run in either of two ways:
 
 1. From the same `apps/api` image with a different start command, if its dependencies stay small.
-2. As its own app, `apps/worker/`, with the shared code (database access, embeddings, chunk types) moved into `packages/core/`. Do this if the worker needs its own scaling or dependencies, or if a third consumer of that code appears.
+2. As its own app, `apps/worker/`, with the shared code (database access, embeddings, report and chunk types) moved into `packages/core/`. This fits if the worker needs its own scaling or dependencies, or if a third consumer of that code appears.

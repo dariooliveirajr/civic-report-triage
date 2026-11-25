@@ -46,3 +46,10 @@ pgdata/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Raw API snapshots and fetched pages (re-creatable by the import and ingest scripts)
+data/snapshots/
+data/pages/
+
+# Local leftovers to delete by hand
+_to_delete/
