@@ -1,0 +1,5 @@
+# Hand-written docs and knowledge sources are not auto-formatted
+*.md
+knowledge/
+data/
+package-lock.json
