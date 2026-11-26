@@ -1,7 +1,7 @@
 # cologne-civic-report-triage: triage for citizen reports (Open311 + rules + RAG)
 
 ## Goal
-MVP v0.1 (live by 1 Dec): a list of real Köln reports imported from the
+MVP v0.1 (live by 2 Dec): a list of real Köln reports imported from the
 Open311 API; opening a report shows a reply draft based on the city's
 service pages, with sources shown next to the draft.
 Build only what the current release needs.
@@ -18,8 +18,8 @@ Plain LLM SDK first, no LangChain unless a release needs it.
 - Open311 client: always query with start_date and end_date, small
   windows (one day to one week), page through results, timeout and
   retry with backoff. The Köln backend times out on large ranges.
-- One source adapter per city behind a common Open311 interface.
-  Köln first, Bonn second.
+- Köln is the only data source. Its adapter sits behind an Open311
+  interface so tests can use a fake.
 - Store source, licence and fetch time with every report and every
   knowledge chunk. Show the "data as of" time in the UI.
 - /knowledge/sources.yaml lists the public pages the drafter may use.

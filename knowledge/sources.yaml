@@ -1,6 +1,6 @@
 # Public pages the reply drafter may use.
 # url:         page to ingest
-# city:        koeln | bonn
+# city:        koeln (the only city)
 # categories:  Open311 service names this page applies to (matched case-insensitively)
 # department:  responsible body named on the page
 
