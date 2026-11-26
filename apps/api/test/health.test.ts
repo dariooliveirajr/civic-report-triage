@@ -10,7 +10,7 @@ describe("GET /health", () => {
   });
 
   it("returns status ok", async () => {
-    fastifyApp = buildApp({ PORT: 3000, LOG_LEVEL: "silent" });
+    fastifyApp = buildApp({ HOST: "127.0.0.1", PORT: 3000, LOG_LEVEL: "silent" });
 
     const response = await fastifyApp.inject({ method: "GET", url: "/health" });
 

@@ -3,11 +3,16 @@ import { loadConfig } from "../src/config.js";
 
 describe("loadConfig", () => {
   it("uses defaults when variables are missing", () => {
-    expect(loadConfig({})).toEqual({ PORT: 3000, LOG_LEVEL: "info" });
+    expect(loadConfig({})).toEqual({
+      HOST: "0.0.0.0",
+      PORT: 3000,
+      LOG_LEVEL: "info",
+    });
   });
 
   it("reads and coerces valid values", () => {
-    expect(loadConfig({ PORT: "8080", LOG_LEVEL: "debug" })).toEqual({
+    expect(loadConfig({ HOST: "127.0.0.1", PORT: "8080", LOG_LEVEL: "debug" })).toEqual({
+      HOST: "127.0.0.1",
       PORT: 8080,
       LOG_LEVEL: "debug",
     });

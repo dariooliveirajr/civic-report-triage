@@ -1,6 +1,7 @@
 import * as zod from "zod";
 
 const configSchema = zod.object({
+  HOST: zod.string().min(1).default("0.0.0.0"),
   PORT: zod.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: zod
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
