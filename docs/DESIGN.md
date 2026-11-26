@@ -2,13 +2,13 @@
 
 ## Overview
 
-The project is a triage service for citizen reports to German cities. Köln and Bonn publish the reports they receive (illegal dumping, broken street lights, abandoned vehicles, blocked drains) as anonymised open data through the Open311 GeoReport v2 standard. The service imports these reports, a rules engine assigns each one a department, a priority and a target response time, and a retrieval-augmented generation (RAG) component drafts a reply from the city's own public service pages. Every draft lists the passages it is based on, so it can be checked against its source. Drafts are suggestions for a human; nothing is sent to citizens or to the cities.
+The project is a triage service for citizen reports to the city of Köln. Köln publishes the reports it receives (illegal dumping, broken street lights, abandoned vehicles, blocked drains) as anonymised open data through the Open311 GeoReport v2 standard. The service imports these reports, a rules engine assigns each one a department, a priority and a target response time, and a retrieval-augmented generation (RAG) component drafts a reply from the city's own public service pages. Every draft lists the passages it is based on, so it can be checked against its source. Drafts are suggestions for a human; nothing is sent to citizens or to the city.
 
 **Why civic report triage was chosen:**
 
 - The incoming items are real, in German, and change every day, so routing and drafting are tested on data nobody wrote for the project.
 - Rules and RAG complement each other. Rules give predictable, auditable and cheap routing before the LLM is involved, and the LLM is limited to drafting replies from retrieved city pages.
-- The data is open and anonymised (Köln: Datenlizenz Deutschland – Zero 2.0; Bonn: CC0 1.0). No personal or proprietary data is involved.
+- The data is open and anonymised (Köln: Datenlizenz Deutschland – Zero 2.0). No personal or proprietary data is involved.
 - The upstream APIs are not always available. Isolating the service from them is part of the design rather than an afterthought.
 
 ## Related work
@@ -17,13 +17,13 @@ Automatic classification of 311 requests has been studied and built before, most
 
 ## Architecture
 
-The system consists of a web app, an API, a reply drafter and Postgres with pgvector, all running as Docker containers on AWS and deployed by CI/CD. A rules engine sits between the stored reports and the reply drafter. Two ingestion paths fill the database: report import from the cities' Open311 APIs, and knowledge ingest from the public pages listed in `knowledge/sources.yaml`. An external LLM API provides embeddings and reply drafts.
+The system consists of a web app, an API, a reply drafter and Postgres with pgvector, all running as Docker containers on AWS and deployed by CI/CD. A rules engine sits between the stored reports and the reply drafter. Two ingestion paths fill the database: report import from the Köln Open311 API, and knowledge ingest from the public pages listed in `knowledge/sources.yaml`. An external LLM API provides embeddings and reply drafts.
 
 Solid boxes are part of the first release. Dashed boxes are stubbed or scripted in the first release and completed in later releases.
 
 ```mermaid
 flowchart TB
-  cities["City Open311 APIs<br/>Köln, Bonn"]
+  cities["City Open311 API<br/>Köln"]
   pages["City service pages<br/>listed in sources.yaml"]
   llm["LLM API<br/>external service"]
   subgraph aws["Docker containers on AWS, deployed by CI/CD"]
@@ -54,16 +54,16 @@ flowchart TB
 
 - **Web app.** A React page that lists imported reports with their category, district and status, and shows a reply draft with its sources for a selected report. It shows the time of the last successful import ("data as of").
 - **API.** A Node/TypeScript service that acts as the single entry point for the web app. It reads only from Postgres and never calls a city API during a request.
-- **Report import.** One adapter per city behind a common Open311 interface. It queries `requests.json` in small date windows (one day to one week), pages through the results, applies timeouts and retries with backoff, and upserts reports by city and `service_request_id`, so repeated runs are safe. Each report keeps its source, licence and fetch time. It starts as a script and later becomes a scheduled worker.
+- **Report import.** A Köln adapter behind an Open311 interface, so tests can use a fake. It queries `requests.json` in small date windows (one day to one week), pages through the results, applies timeouts and retries with backoff, and upserts reports by city and `service_request_id`, so repeated runs are safe. Each report keeps its source, licence and fetch time. It starts as a script and later becomes a scheduled worker.
 - **Rules engine.** Applies JSON rules to a report: Open311 category to department, priority (for example higher for safety-related categories), target response time, and flags such as possible duplicates nearby. In the first release it passes reports through unchanged.
-- **Reply drafter.** Searches the knowledge chunks by vector similarity, filtered by city and category, and asks the LLM for a reply with the retrieved passages as the only source material. Report text and retrieved pages are treated as untrusted data.
+- **Reply drafter.** Searches the knowledge chunks by vector similarity, filtered by category, and asks the LLM for a reply with the retrieved passages as the only source material. Report text and retrieved pages are treated as untrusted data.
 - **Knowledge ingest.** Fetches the pages listed in `knowledge/sources.yaml`, extracts the main text, splits it into chunks, creates embeddings through the LLM API and stores them with the source URL and fetch time. A page that cannot be fetched keeps its last stored version.
 - **Postgres + pgvector.** Holds reports, knowledge chunks with embeddings, and later rules and import run logs.
 - **LLM API.** An external service used for both embeddings and reply drafts.
 
 ### Data flow
 
-Ingestion and requests are separate. On a schedule (in the first release, by hand), the report import fetches new and updated reports from the city APIs and stores them in Postgres, and the knowledge ingest keeps the stored chunks in sync with the listed pages. When a user opens a report, the API reads it from Postgres, the rules step classifies it, and the reply drafter searches the knowledge chunks, passes the best matches to the LLM and returns a draft with its sources.
+Ingestion and requests are separate. On a schedule (in the first release, by hand), the report import fetches new and updated reports from the Köln API and stores them in Postgres, and the knowledge ingest keeps the stored chunks in sync with the listed pages. When a user opens a report, the API reads it from Postgres, the rules step classifies it, and the reply drafter searches the knowledge chunks, passes the best matches to the LLM and returns a draft with its sources.
 
 If a city API is unavailable, the import run fails, is logged and is retried on the next run. The web app keeps working with the last stored snapshot and shows its age.
 
@@ -71,7 +71,7 @@ If a city API is unavailable, the import run fails, is logged and is retried on 
 
 - The Köln endpoint times out on large date ranges and occasionally returns a proxy error from its backend. Small windows and retries avoid most failures.
 - Results are paginated (50 requests per page in Köln).
-- Field contents differ between cities, for example in category names and address formats. Each adapter maps its city's fields to a common report schema.
+- Field contents are city-specific, for example category names and address formats. The Köln adapter maps them to the report schema the rest of the app uses.
 - Reports appear in the API only after the city has published them, so the newest reports may be missing for a while.
 
 ### Technology
