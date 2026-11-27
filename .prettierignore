@@ -1,5 +1,5 @@
-# Hand-written docs and knowledge sources are not auto-formatted
+# Hand-written docs and the service page list are not auto-formatted
 *.md
-knowledge/
+service-pages/
 data/
 package-lock.json

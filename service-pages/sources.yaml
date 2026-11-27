@@ -1,10 +1,8 @@
 # Public pages the reply drafter may use.
-# url:         page to ingest
-# city:        koeln (the only city)
+# url:         page to index
 # categories:  Open311 service names this page applies to (matched case-insensitively)
 # department:  responsible body named on the page
 
 - url: https://www.stadt-koeln.de/service/onlinedienste/anregungen-beschwerden/index.html
-  city: koeln
   categories: ["Wilder Müll", "Stadtsauberkeit", "Gully", "Straßenreinigung"]
   department: "Stadt Köln, Anregungen und Beschwerden (overview)"
