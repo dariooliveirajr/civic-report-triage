@@ -47,7 +47,7 @@ pgdata/
 .DS_Store
 Thumbs.db
 
-# Raw API snapshots and fetched pages (re-creatable by the import and ingest scripts)
+# Raw API snapshots and fetched pages (re-creatable by the import and indexing scripts)
 data/snapshots/
 data/pages/
 
