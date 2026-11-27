@@ -1,4 +1,4 @@
-# cologne-civic-report-triage
+# civic-report-triage
 
 A triage service for citizen reports to the city of Köln (potholes, illegal dumping, broken street lights). It imports real reports from Köln's public Open311 API, a rules engine assigns each report a department, priority and target response time, and a RAG component drafts a reply from the city's own service information, citing the passages each reply is based on.
 

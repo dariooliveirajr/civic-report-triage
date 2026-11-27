@@ -83,7 +83,7 @@ React, Node/TypeScript, Postgres with pgvector, Docker Compose for local develop
 The repository is a monorepo with one directory per deployable app and top-level directories for knowledge sources, schema and infrastructure.
 
 ```text
-cologne-civic-report-triage/
+civic-report-triage/
 ├─ apps/api/            Node/TypeScript API: rules engine, reply drafter, import and ingest code
 ├─ apps/web/            React web app
 ├─ knowledge/           sources.yaml: the public pages the drafter may use

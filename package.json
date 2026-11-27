@@ -1,5 +1,5 @@
 {
-  "name": "cologne-civic-report-triage",
+  "name": "civic-report-triage",
   "version": "0.0.0",
   "private": true,
   "description": "Triage for citizen reports: Open311 import, rules, reply drafts from city pages",

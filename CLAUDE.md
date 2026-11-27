@@ -1,4 +1,4 @@
-# cologne-civic-report-triage: triage for citizen reports (Open311 + rules + RAG)
+# civic-report-triage: triage for citizen reports (Open311 + rules + RAG)
 
 ## Goal
 MVP v0.1 (live by 2 Dec): a list of real Köln reports imported from the
